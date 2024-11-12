@@ -1,0 +1,9 @@
+Order ID,Product,Quantity,Price per Unit,Total Sales,Date
+1,Widget A,4,10,40,2024-01-01
+2,Widget B,2,15,30,2024-01-02
+3,Widget A,1,10,10,2024-01-03
+4,Widget C,5,20,100,2024-01-04
+5,Widget B,3,15,45,2024-01-05
+6,Widget A,2,10,20,2024-01-06
+7,Widget C,1,20,20,2024-01-07
+8,Widget B,4,15,60,2024-01-08
