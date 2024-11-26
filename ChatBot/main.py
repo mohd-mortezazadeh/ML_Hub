@@ -83,7 +83,7 @@ if __name__ == '__main__':
     print("Bot is Running")
 
     recognizer = sr.Recognizer()  # Initialize speech recognizer
-    mic = sr.Microphone()  # Initialize microphone
+    mic = sr.Microphone(device_index=4)  # Initialize microphone
 
     engine = pyttsx3.init()  # Initialize text-to-speech engine
     rate = engine.getProperty('rate')
