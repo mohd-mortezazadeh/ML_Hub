@@ -292,3 +292,8 @@ log
 *./log
 /txt/
 ./txt
+.vscode
+./vscode
+./vscode/
+/vscode
+/vscode/
