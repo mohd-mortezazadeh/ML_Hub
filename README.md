@@ -1,6 +1,3 @@
-مطمئناً! در زیر یک متن مناسب برای فایل رد (ردیابی) شما درباره پروژه موجود در لینک GitHub ارائه شده است:
-
----
 
 # MLHub Repository Overview
 
@@ -28,8 +25,4 @@ The project encourages contributions from the community. If you have ideas for i
 ## Conclusion
 MLHub is a valuable resource for anyone interested in machine learning. Its well-organized structure and comprehensive examples make it an excellent starting point for both beginners and experienced developers.
 
----
 
-### نکات اضافی:
-- می‌توانید این متن را بر اساس نیازها و سلیقه خود ویرایش کنید.
-- اگر نیاز به اطلاعات خاص‌تری دارید، لطفاً بفرمایید.
