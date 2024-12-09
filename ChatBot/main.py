@@ -13,14 +13,26 @@ import time
 lemmatizer = WordNetLemmatizer()
 
 # Load intents from JSON file
-intents = json.loads(open("intents.json").read())
+try:
+    intents = json.loads(open("intents.json").read())
+except FileNotFoundError:
+    print("Error: intents.json file not found.")
+    exit(1)
 
 # Load processed words and classes from pickle files
-words = pickle.load(open('words.pkl', 'rb'))
-classes = pickle.load(open('classes.pkl', 'rb'))
+try:
+    words = pickle.load(open('words.pkl', 'rb'))
+    classes = pickle.load(open('classes.pkl', 'rb'))
+except FileNotFoundError as e:
+    print(f"Error: {e}. Make sure 'words.pkl' and 'classes.pkl' exist.")
+    exit(1)
 
 # Load the trained model
-model = load_model('chatbot_model.h5')
+try:
+    model = load_model('chatbot_model.h5')
+except Exception as e:
+    print(f"Error loading model: {e}")
+    exit(1)
 
 def clean_up_sentence(sentence):
     """Tokenizes and lemmatizes the input sentence."""
@@ -57,6 +69,9 @@ def predict_class(sentence):
 
 def get_response(intents_list, intents_json):
     """Fetches a random response for the predicted intent."""
+    if not intents_list:
+        return "I'm sorry, I didn't understand that."
+    
     tag = intents_list[0]['intent']
     list_of_intents = intents_json['intents']
 
@@ -87,13 +102,13 @@ if __name__ == '__main__':
 
     engine = pyttsx3.init()  # Initialize text-to-speech engine
     rate = engine.getProperty('rate')
-    engine.setProperty('rate', 175)  # Set speech rate
+    engine.setProperty('rate', 140)  # Set speech rate (lower value for slower speech)
     engine.setProperty('volume', 1.0)  # Set volume level
 
     voices = engine.getProperty('voices')
 
     # Greet the user
-    engine.say("Hello user, I am Bagley, your personal Talking Healthcare Chatbot.")
+    engine.say("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
     engine.runAndWait()
 
     # Ask for voice preference
@@ -102,64 +117,69 @@ if __name__ == '__main__':
 
     # Capture voice input for gender preference
     with mic as source:
-        recognizer.adjust_for_ambient_noise(source, duration=0.2)
-        audio = recognizer.listen(source)
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        try:
+            audio = recognizer.listen(source)
+            audio = recognizer.recognize_vosk(audio)  # Use Vosk for recognition
 
-    audio = recognizer.recognize_google(audio)
+            # Set voice based on user preference
+            if audio.lower() == "female":
+                engine.setProperty('voice', voices[1].id)  # Set female voice
+                print("You have chosen to continue with Female Voice")
+            else:
+                engine.setProperty('voice', voices[0].id)  # Set male voice
+                print("You have chosen to continue with Male Voice")
 
-    # Set voice based on user preference
-    if audio.lower() == "female":
-        engine.setProperty('voice', voices[1].id)  # Set female voice
-        print("You have chosen to continue with Female Voice")
-    else:
-        engine.setProperty('voice', voices[0].id)  # Set male voice
-        print("You have chosen to continue with Male Voice")
-
-    # Main loop for symptom input
-    while True:
-        with mic as symptom:
-            print("Say Your Symptoms. The Bot is Listening")
-            engine.say("You may tell me your symptoms now. I am listening")
-            engine.runAndWait()
-            try:
-                recognizer.adjust_for_ambient_noise(symptom, duration=0.2)
-                symp = recognizer.listen(symptom)
-                text = recognizer.recognize_google(symp)  # Convert audio to text
-                engine.say("You said {}".format(text))
+            # Main loop for symptom input
+            while True:
+                print("Say Your Symptoms. The Bot is Listening")
+                engine.say("You may tell me your symptoms now. I am listening")
                 engine.runAndWait()
+                
+                try:
+                    recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    symp = recognizer.listen(source)  # Use the same source
+                    text = recognizer.recognize_vosk(symp)  # Convert audio to text
+                    print(text, 11111111111111111111)
+                    engine.say("You said {}".format(text))
+                    engine.runAndWait()
+                    time.sleep(2)
 
-                engine.say("Scanning our database for your symptom. Please wait.")
-                engine.runAndWait()
-                time.sleep(1)
+                    engine.say("Scanning our database for your symptom. Please wait.")
+                    engine.runAndWait()
+                    time.sleep(2)
 
-                # Process the recognized symptoms
-                calling_the_bot(text)
-            except sr.UnknownValueError:
-                # Handle unrecognized speech
-                engine.say("Sorry, either your symptom is unclear to me or it is not present in our database. Please try again.")
-                engine.runAndWait()
-                print("Sorry, either your symptom is unclear to me or it is not present in our database. Please try again.")
-            finally:
+                    # Process the recognized symptoms
+                    calling_the_bot(text)
+                except sr.UnknownValueError:
+                    # Handle unrecognized speech
+                    engine.say("Sorry, I could not understand what you said. Please try again.")
+                    engine.runAndWait()
+                    print("Sorry, I could not understand what you said. Please try again.")
+                except sr.RequestError as e:
+                    # Handle request error
+                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
+                    engine.runAndWait()
+                    print(f"Could not request results from Google Speech Recognition service; {e}")
+
+                # Check if user wants to exit
                 engine.say("If you want to continue please say True otherwise say False.")
                 engine.runAndWait()
+                
+                try:
+                    voice = recognizer.listen(source)  # Use the same source
+                    final = recognizer.recognize_vosk(voice)
+                    if final.lower() == 'no' or final.lower() == 'please exit':
+                        engine.say("Thank You. Shutting Down now.")
+                        engine.runAndWait()
+                        break  # Exit the loop
+                except sr.UnknownValueError:
+                    engine.say("Sorry, I did not understand that. Please try again.")
+                    engine.runAndWait()
+                except sr.RequestError as e:
+                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
+                    engine.runAndWait()
+                    print(f"Could not request results from Google Speech Recognition service; {e}")
 
-        # Check if user wants to exit
-        with mic as ans:
-            recognizer.adjust_for_ambient_noise(ans, duration=0.2)
-            voice = recognizer.listen(ans)
-            final = recognizer.recognize_google(voice)
-
-        if final.lower() == 'no' or final.lower() == 'please exit':
-            engine.say("Thank You. Shutting Down now.")
-            engine.runAndWait()
-            break  # Exit the loop
-
-
-
-
-"""
-توضیحات کلی:
-این کد یک چت‌بات صوتی به نام "Bagley" است که با استفاده از ورودی صوتی کاربر، علائم بیماری را شناسایی کرده و پاسخ‌های مربوطه را ارائه می‌دهد.
-کد از کتابخانه‌های مختلفی مانند speech_recognition برای شناسایی گفتار، pyttsx3 برای تبدیل متن به گفتار و tensorflow برای بارگذاری مدل یادگیری عمیق استفاده می‌کند.
-کاربر می‌تواند صدای مردانه یا زنانه را انتخاب کند و پس از آن می‌تواند علائم خود را بیان کند. چت‌بات پاسخ‌های مربوطه را از پایگاه داده خود پیدا کرده و به کاربر اعلام می‌کند.
-"""
+        except Exception as e:
+            print(f"Error occurred: {e}")

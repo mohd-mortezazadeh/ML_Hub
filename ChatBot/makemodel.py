@@ -9,10 +9,10 @@ from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.optimizers import SGD
 
 # Download required NLTK resources
-nltk.download('punkt')  # برای توکن‌سازی جملات
+# nltk.download('punkt')  # برای توکن‌سازی جملات
+nltk.download('punkt_tab')
 nltk.download('wordnet')  # برای لِمَت‌سازی کلمات
 nltk.download('omw-1.4')  # برای دسترسی به WordNet
-
 # Initialize lemmatizer
 lemmatizer = WordNetLemmatizer()
 
