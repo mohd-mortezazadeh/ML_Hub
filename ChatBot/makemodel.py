@@ -1,185 +1,98 @@
 import random
 import json
 import pickle
-import nltk
-from nltk.stem import WordNetLemmatizer
-from tensorflow.keras.models import load_model
-import numpy as np
-import speech_recognition as sr
-import pyttsx3
-import time
 
-# Initialize lemmatizer for word normalization
+import nltk
+# Download all NLTK resources (this may take some time)
+nltk.download('all')
+from nltk.stem import WordNetLemmatizer
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense,  Dropout
+from tensorflow.keras.optimizers import SGD
+
+import numpy as np
+
+# Initialize the lemmatizer
 lemmatizer = WordNetLemmatizer()
 
-# Load intents from JSON file
-try:
-    intents = json.loads(open("intents.json").read())
-except FileNotFoundError:
-    print("Error: intents.json file not found.")
-    exit(1)
+# Load intents from the intents.json file
+intents = json.loads(open("intents.json").read())
 
-# Load processed words and classes from pickle files
-try:
-    words = pickle.load(open('words.pkl', 'rb'))
-    classes = pickle.load(open('classes.pkl', 'rb'))
-except FileNotFoundError as e:
-    print(f"Error: {e}. Make sure 'words.pkl' and 'classes.pkl' exist.")
-    exit(1)
+# Initialize lists to hold words, classes, and documents
+words = []
+classes = []
+documents = []
 
-# Load the trained model
-try:
-    model = load_model('chatbot_model.h5')
-except Exception as e:
-    print(f"Error loading model: {e}")
-    exit(1)
+# Define characters to ignore in the input
+ignore_letters = ["?", "!", ".", ","]
 
-def clean_up_sentence(sentence):
-    """Tokenizes and lemmatizes the input sentence."""
-    sentence_words = nltk.word_tokenize(sentence)
-    sentence_words = [lemmatizer.lemmatize(word) for word in sentence_words]
-    return sentence_words
+# Process each intent in the intents file
+for intent in intents["intents"]:
+    for pattern in intent["patterns"]:
+        # Tokenize each pattern and add to the word list and documents
+        word_list = nltk.word_tokenize(pattern)
+        words.extend(word_list)
+        documents.append((word_list, intent["tag"]))
 
-def bag_of_words(sentence):
-    """Creates a bag of words representation of the input sentence."""
-    sentence_words = clean_up_sentence(sentence)
-    bag = [0] * len(words)
+        # Add the intent tag to classes if it's not already present
+        if intent["tag"] not in classes:
+            classes.append(intent["tag"])
 
-    for w in sentence_words:
-        for i, word in enumerate(words):
-            if word == w:
-                bag[i] = 1
-    return np.array(bag)
+# Lemmatize words and remove ignored characters
+words = [lemmatizer.lemmatize(word)
+         for word in words if word not in ignore_letters]
 
-def predict_class(sentence):
-    """Predicts the class of the input sentence using the trained model."""
-    bow = bag_of_words(sentence)  # Convert sentence to bag of words
-    res = model.predict(np.array([bow]))[0]  # Get predictions from the model
+# Sort and remove duplicates from words and classes
+words = sorted(set(words))
+classes = sorted(set(classes))
 
-    ERROR_THRESHOLD = 0.25  # Set a threshold for confidence
+# Save the processed words and classes to files
+pickle.dump(words, open('words.pkl', 'wb'))
+pickle.dump(classes, open('classes.pkl', 'wb'))
 
-    # Filter out predictions below the threshold
-    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]
-    results.sort(key=lambda x: x[1], reverse=True)  # Sort by probability
+# Prepare the dataset for training
+dataset = []
+template = [0] * len(classes)  # Initialize output template
 
-    return_list = []
-    for r in results:
-        return_list.append({'intent': classes[r[0]], 'probability': str(r[1])})
-    return return_list
+# Create the bag of words and output rows for each document
+for document in documents:
+    bag = []
+    word_patterns = document[0]
+    word_patterns = [lemmatizer.lemmatize(word.lower())
+                     for word in word_patterns]
 
-def get_response(intents_list, intents_json):
-    """Fetches a random response for the predicted intent."""
-    if not intents_list:
-        return "I'm sorry, I didn't understand that."
-    
-    tag = intents_list[0]['intent']
-    list_of_intents = intents_json['intents']
+    # Create a bag of words representation
+    for word in words:
+        bag.append(1) if word in word_patterns else bag.append(0)
 
-    result = ''
-    for i in list_of_intents:
-        if i['tag'] == tag:
-            result = random.choice(i['responses'])  # Get a random response
-            break
-    return result
+    # Create the output row for the corresponding class
+    output_row = list(template)
+    output_row[classes.index(document[1])] = 1
+    dataset.append([bag, output_row])
 
-def calling_the_bot(txt):
-    """Processes the input text, predicts the intent, and responds via voice."""
-    global res
-    predict = predict_class(txt)  # Predict the class of the input
-    res = get_response(predict, intents)  # Get the corresponding response
+# Shuffle the dataset to ensure randomness during training
+random.shuffle(dataset)
+dataset = np.array(dataset, dtype=object)
 
-    # Speak the response using text-to-speech
-    engine.say("Found it. From our database we found that " + res)
-    engine.runAndWait()
-    print("Your Symptom was: ", txt)
-    print("Result found in our Database: ", res)
+# Split the dataset into training features and labels
+train_x = list(dataset[:, 0])
+train_y = list(dataset[:, 1])
 
-if __name__ == '__main__':
-    print("Bot is Running")
+# Build the neural network model
+model = Sequential()
+model.add(Dense(256, input_shape=(len(train_x[0]),), activation='relu'))  # First hidden layer
+model.add(Dropout(0.5))  # Dropout layer to prevent overfitting
+model.add(Dense(128, activation='relu'))  # Second hidden layer
+model.add(Dropout(0.5))  # Dropout layer
+model.add(Dense(len(train_y[0]), activation='softmax'))  # Output layer with softmax activation
 
-    recognizer = sr.Recognizer()  # Initialize speech recognizer
-    mic = sr.Microphone(device_index=4)  # Initialize microphone
+# Compile the model with SGD optimizer and categorical crossentropy loss
+sgd = SGD(learning_rate=0.01, momentum=0.9, nesterov=True)
+model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
-    engine = pyttsx3.init()  # Initialize text-to-speech engine
-    rate = engine.getProperty('rate')
-    engine.setProperty('rate', 120)  # تنظیم سرعت گفتار (مقدار پایین‌تر برای وضوح بیشتر)
-    engine.setProperty('volume', 1.0)  # تنظیم سطح صدا
+# Train the model on the training data
+hist = model.fit(np.array(train_x), np.array(train_y), epochs=200, batch_size=5, verbose=1)
 
-    voices = engine.getProperty('voices')
-
-    # Greet the user
-    engine.say("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
-    engine.runAndWait()
-
-    # Ask for voice preference
-    engine.say("IF YOU WANT TO CONTINUE WITH MALE VOICE PLEASE SAY MALE. OTHERWISE SAY FEMALE.")
-    engine.runAndWait()
-
-    # Capture voice input for gender preference
-    with mic as source:
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        try:
-            audio = recognizer.listen(source)
-            audio = recognizer.recognize_vosk(audio)  # Use Vosk for recognition
-
-            # Set voice based on user preference
-            if audio.lower() == "female":
-                engine.setProperty('voice', voices[1].id)  # Set female voice
-                print("You have chosen to continue with Female Voice")
-            else:
-                engine.setProperty('voice', voices[0].id)  # Set male voice
-                print("You have chosen to continue with Male Voice")
-
-            # Main loop for symptom input
-            while True:
-                print("Say Your Symptoms. The Bot is Listening")
-                engine.say("You may tell me your symptoms now. I am listening")
-                engine.runAndWait()
-                
-                try:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                    symp = recognizer.listen(source)  # Use the same source
-                    text = recognizer.recognize_vosk(symp)  # Convert audio to text
-                    print(text, 11111111111111111111)
-                    engine.say("You said {}".format(text))
-                    engine.runAndWait()
-                    time.sleep(2)
-
-                    engine.say("Scanning our database for your symptom. Please wait.")
-                    engine.runAndWait()
-                    time.sleep(2)
-
-                    # Process the recognized symptoms
-                    calling_the_bot(text)
-                except sr.UnknownValueError:
-                    # Handle unrecognized speech
-                    engine.say("Sorry, I could not understand what you said. Please try again.")
-                    engine.runAndWait()
-                    print("Sorry, I could not understand what you said. Please try again.")
-                except sr.RequestError as e:
-                    # Handle request error
-                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
-                    engine.runAndWait()
-                    print(f"Could not request results from Google Speech Recognition service; {e}")
-
-                # Check if user wants to exit
-                engine.say("If you want to continue please say True otherwise say False.")
-                engine.runAndWait()
-                
-                try:
-                    voice = recognizer.listen(source)  # Use the same source
-                    final = recognizer.recognize_vosk(voice)
-                    if final.lower() == 'no' or final.lower() == 'please exit':
-                        engine.say("Thank You. Shutting Down now.")
-                        engine.runAndWait()
-                        break  # Exit the loop
-                except sr.UnknownValueError:
-                    engine.say("Sorry, I did not understand that. Please try again.")
-                    engine.runAndWait()
-                except sr.RequestError as e:
-                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
-                    engine.runAndWait()
-                    print(f"Could not request results from Google Speech Recognition service; {e}")
-
-        except Exception as e:
-            print(f"Error occurred: {e}")
+# Save the trained model to a file
+model.save("chatbot_model.h5", hist)
+print("Done!")  # Indicate that training is complete

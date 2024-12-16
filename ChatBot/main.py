@@ -6,164 +6,102 @@ from nltk.stem import WordNetLemmatizer
 from tensorflow.keras.models import load_model
 import numpy as np
 import speech_recognition as sr
-import time
-import pyttsx3  # Import pyttsx3 for text-to-speech
+from gtts import gTTS
+from playsound import playsound
 
-# Initialize lemmatizer for word normalization
+# Initialize the lemmatizer
 lemmatizer = WordNetLemmatizer()
 
-# Load intents from JSON file
-try:
-    intents = json.loads(open("intents.json").read())
-except FileNotFoundError:
-    print("Error: intents.json file not found.")
-    exit(1)
+# Load intents, words, classes, and the trained model
+intents = json.loads(open("intents.json").read())
+words = pickle.load(open('words.pkl', 'rb'))
+classes = pickle.load(open('classes.pkl', 'rb'))
+model = load_model('chatbot_model.h5')
 
-# Load processed words and classes from pickle files
-try:
-    words = pickle.load(open('words.pkl', 'rb'))
-    classes = pickle.load(open('classes.pkl', 'rb'))
-except FileNotFoundError as e:
-    print(f"Error: {e}. Make sure 'words.pkl' and 'classes.pkl' exist.")
-    exit(1)
-
-# Load the trained model
-try:
-    model = load_model('chatbot_model.h5')
-except Exception as e:
-    print(f"Error loading model: {e}")
-    exit(1)
-
-# Initialize the text-to-speech engine
-engine = pyttsx3.init()
-
+# Function to clean up the input sentence
 def clean_up_sentence(sentence):
-    """Tokenizes and lemmatizes the input sentence."""
-    sentence_words = nltk.word_tokenize(sentence)
-    sentence_words = [lemmatizer.lemmatize(word) for word in sentence_words]
-    return sentence_words
+    sentence_words = nltk.word_tokenize(sentence)  # Tokenize the sentence
+    return [lemmatizer.lemmatize(word) for word in sentence_words]  # Lemmatize each word
 
+# Function to create a bag of words representation
 def bag_of_words(sentence):
-    """Creates a bag of words representation of the input sentence."""
     sentence_words = clean_up_sentence(sentence)
-    bag = [0] * len(words)
-
+    bag = [0] * len(words)  # Initialize bag of words
     for w in sentence_words:
         for i, word in enumerate(words):
             if word == w:
-                bag[i] = 1
-    return np.array(bag)
+                bag[i] = 1  # Mark the presence of the word in the bag
+    return np.array(bag)  # Return as numpy array
 
+# Function to predict the class of the input sentence
 def predict_class(sentence):
-    """Predicts the class of the input sentence using the trained model."""
-    bow = bag_of_words(sentence)  # Convert sentence to bag of words
-    res = model.predict(np.array([bow]))[0]  # Get predictions from the model
-
-    ERROR_THRESHOLD = 0.25  # Set a threshold for confidence
-
-    # Filter out predictions below the threshold
-    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]
+    bow = bag_of_words(sentence)  # Get bag of words
+    res = model.predict(np.array([bow]))[0]  # Predict using the model
+    ERROR_THRESHOLD = 0.25
+    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]  # Filter results
     results.sort(key=lambda x: x[1], reverse=True)  # Sort by probability
+    return [{'intent': classes[r[0]], 'probability': str(r[1])} for r in results]  # Return intents
 
-    return_list = []
-    for r in results:
-        return_list.append({'intent': classes[r[0]], 'probability': str(r[1])})
-    return return_list
-
-def get_response(intents_list, intents_json):
-    """Fetches a random response for the predicted intent."""
-    if not intents_list:
-        return "I'm sorry, I didn't understand that."
+# Function to get a response based on the predicted intents
+def get_response(intents_list):
+    if not intents_list:  # Check if the list is empty
+        return "I'm sorry, I couldn't find any information related to that."
     
-    tag = intents_list[0]['intent']
-    list_of_intents = intents_json['intents']
-
-    result = ''
-    for i in list_of_intents:
+    tag = intents_list[0]['intent']  # Get the top intent
+    for i in intents['intents']:
         if i['tag'] == tag:
-            result = random.choice(i['responses'])  # Get a random response
-            break
-    return result
+            return random.choice(i['responses'])  # Return a random response
+    return ""
 
+# Function to convert text to speech and play it
 def speak(text):
-    """Speaks the given text using pyttsx3."""
-    engine.say(text)  # Use pyttsx3 to speak the text
-    engine.runAndWait()  # Wait until the speech is finished
+    tts = gTTS(text=text, lang='en')  # Convert text to speech
+    filename = "response.mp3"
+    tts.save(filename)  # Save the audio file
+    playsound(filename)  # Play the audio file
 
+# Function to handle the bot's response to user input
 def calling_the_bot(txt):
-    """Processes the input text, predicts the intent, and responds via voice."""
-    global res
     predict = predict_class(txt)  # Predict the class of the input
-    res = get_response(predict, intents)  # Get the corresponding response
+    res = get_response(predict)  # Get the corresponding response
+    speak("Found it. From our Database we found that " + res)  # Speak the response
+    print("Your Symptom was: ", txt)  # Print the user's input
+    print("Result found in our Database: ", res)  # Print the bot's response
 
-    # Speak the response using pyttsx3
-    speak("Found it. From our database we found that: " + res)
-    print("Your Symptom was: ", txt)
-    print("Result found in our Database: ", res)
-
+# Main function to run the chatbot
 if __name__ == '__main__':
     print("Bot is Running")
+    recognizer = sr.Recognizer()  # Initialize the recognizer
+    mic = sr.Microphone()  # Use the microphone as input
+    speak("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")  # Greet the user
 
-    recognizer = sr.Recognizer()  # Initialize speech recognizer
-    mic = sr.Microphone()  # Initialize microphone without specifying device_index
+    while True:
+        with mic as source:
+            print("Say Your Symptoms. The Bot is Listening")
+            speak("You may tell me your symptoms now. I am listening")  # Prompt for symptoms
+            recognizer.adjust_for_ambient_noise(source)  # Adjust for ambient noise
+            symp = recognizer.listen(source)  # Listen for user input
+     
+            try:
+                text = recognizer.recognize_google(symp)  # Recognize speech
+                speak("You said {}".format(text))  # Confirm what was said
+                speak("Scanning our database for your symptom. Please wait.")  # Notify the user
+                calling_the_bot(text)  # Process the input
+            except sr.UnknownValueError:
+                speak("Sorry, I could not understand your symptoms. Please try again.")  # Handle unrecognized speech
+                print("Sorry, I could not understand your symptoms.")
+            except sr.RequestError:
+                speak("Could not request results from Google Speech Recognition service.")  # Handle request errors
+                print("Could not request results from Google Speech Recognition service.")
 
-    # Greet the user
-    speak("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
+        # Ask if the user wants to continue
+        speak("If you want to continue please say Yes otherwise say exit")
+        with mic as ans:
+            recognizer.adjust_for_ambient_noise(ans)  # Adjust for ambient noise
+            voice = recognizer.listen(ans)  # Listen for the user's response
 
-    # Ask for voice preference
-    speak("If you want to continue with male voice please say male. Otherwise say female.")
-
-    # Capture voice input for gender preference
-    with mic as source:
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        try:
-            audio = recognizer.listen(source)
-            audio = recognizer.recognize_vosk(audio)  # Use Vosk for recognition
-
-            # Set voice based on user preference
-            if audio.lower() == "female":
-                print("You have chosen to continue with Female Voice")
-            else:
-                print("You have chosen to continue with Male Voice")
-
-            # Main loop for symptom input
-            while True:
-                print("Say Your Symptoms. The Bot is Listening")
-                speak("You may tell me your symptoms now. I am listening.")
-                
-                try:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                    symp = recognizer.listen(source)  # Use the same source
-                    text = recognizer.recognize_vosk(symp)  # Convert audio to text
-                    print(text)
-                    speak("You said {}".format(text))
-                    time.sleep(2)
-
-                    speak("Scanning our database for your symptom. Please wait.")
-                    time.sleep(2)
-
-                    # Process the recognized symptoms
-                    calling_the_bot(text)
-                except sr.UnknownValueError:
-                    # Handle unrecognized speech
-                    speak("Sorry, I could not understand what you said. Please try again.")
-                except sr.RequestError as e:
-                    # Handle request error
-                    speak("Could not request results from Google Speech Recognition service; {0}".format(e))
-
-                # Check if user wants to exit
-                speak("If you want to continue please say true otherwise say false.")
-                
-                try:
-                    voice = recognizer.listen(source)  # Use the same source
-                    final = recognizer.recognize_vosk(voice)
-                    if final.lower() == 'no' or final.lower() == 'please exit':
-                        speak("Thank You. Shutting Down now.")
-                        break  # Exit the loop
-                except sr.UnknownValueError:
-                    speak("Sorry, I did not understand that. Please try again.")
-                except sr.RequestError as e:
-                    speak("Could not request results from Google Speech Recognition service; {0}".format(e))
-
-        except Exception as e:
-            print(f"Error occurred: {e}")
+        final = recognizer.recognize_google(voice).lower()  # Recognize the response
+        if final in ['no', 'please exit', 'false']:  # Check if the user wants to exit
+            speak("Thank You. Shutting Down now.")  # Thank the user
+            print("Bot has been stopped by the user")  # Log the exit
+            break
