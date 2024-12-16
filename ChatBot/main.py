@@ -6,8 +6,8 @@ from nltk.stem import WordNetLemmatizer
 from tensorflow.keras.models import load_model
 import numpy as np
 import speech_recognition as sr
-import pyttsx3
 import time
+import pyttsx3  # Import pyttsx3 for text-to-speech
 
 # Initialize lemmatizer for word normalization
 lemmatizer = WordNetLemmatizer()
@@ -33,6 +33,9 @@ try:
 except Exception as e:
     print(f"Error loading model: {e}")
     exit(1)
+
+# Initialize the text-to-speech engine
+engine = pyttsx3.init()
 
 def clean_up_sentence(sentence):
     """Tokenizes and lemmatizes the input sentence."""
@@ -82,15 +85,19 @@ def get_response(intents_list, intents_json):
             break
     return result
 
+def speak(text):
+    """Speaks the given text using pyttsx3."""
+    engine.say(text)  # Use pyttsx3 to speak the text
+    engine.runAndWait()  # Wait until the speech is finished
+
 def calling_the_bot(txt):
     """Processes the input text, predicts the intent, and responds via voice."""
     global res
     predict = predict_class(txt)  # Predict the class of the input
     res = get_response(predict, intents)  # Get the corresponding response
 
-    # Speak the response using text-to-speech
-    engine.say("Found it. From our database we found that " + res)
-    engine.runAndWait()
+    # Speak the response using pyttsx3
+    speak("Found it. From our database we found that: " + res)
     print("Your Symptom was: ", txt)
     print("Result found in our Database: ", res)
 
@@ -98,22 +105,13 @@ if __name__ == '__main__':
     print("Bot is Running")
 
     recognizer = sr.Recognizer()  # Initialize speech recognizer
-    mic = sr.Microphone(device_index=4)  # Initialize microphone
-
-    engine = pyttsx3.init()  # Initialize text-to-speech engine
-    rate = engine.getProperty('rate')
-    engine.setProperty('rate', 140)  # Set speech rate (lower value for slower speech)
-    engine.setProperty('volume', 1.0)  # Set volume level
-
-    voices = engine.getProperty('voices')
+    mic = sr.Microphone()  # Initialize microphone without specifying device_index
 
     # Greet the user
-    engine.say("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
-    engine.runAndWait()
+    speak("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
 
     # Ask for voice preference
-    engine.say("IF YOU WANT TO CONTINUE WITH MALE VOICE PLEASE SAY MALE. OTHERWISE SAY FEMALE.")
-    engine.runAndWait()
+    speak("If you want to continue with male voice please say male. Otherwise say female.")
 
     # Capture voice input for gender preference
     with mic as source:
@@ -124,62 +122,48 @@ if __name__ == '__main__':
 
             # Set voice based on user preference
             if audio.lower() == "female":
-                engine.setProperty('voice', voices[1].id)  # Set female voice
                 print("You have chosen to continue with Female Voice")
             else:
-                engine.setProperty('voice', voices[0].id)  # Set male voice
                 print("You have chosen to continue with Male Voice")
 
             # Main loop for symptom input
             while True:
                 print("Say Your Symptoms. The Bot is Listening")
-                engine.say("You may tell me your symptoms now. I am listening")
-                engine.runAndWait()
+                speak("You may tell me your symptoms now. I am listening.")
                 
                 try:
                     recognizer.adjust_for_ambient_noise(source, duration=0.5)
                     symp = recognizer.listen(source)  # Use the same source
                     text = recognizer.recognize_vosk(symp)  # Convert audio to text
-                    print(text, 11111111111111111111)
-                    engine.say("You said {}".format(text))
-                    engine.runAndWait()
+                    print(text)
+                    speak("You said {}".format(text))
                     time.sleep(2)
 
-                    engine.say("Scanning our database for your symptom. Please wait.")
-                    engine.runAndWait()
+                    speak("Scanning our database for your symptom. Please wait.")
                     time.sleep(2)
 
                     # Process the recognized symptoms
                     calling_the_bot(text)
                 except sr.UnknownValueError:
                     # Handle unrecognized speech
-                    engine.say("Sorry, I could not understand what you said. Please try again.")
-                    engine.runAndWait()
-                    print("Sorry, I could not understand what you said. Please try again.")
+                    speak("Sorry, I could not understand what you said. Please try again.")
                 except sr.RequestError as e:
                     # Handle request error
-                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
-                    engine.runAndWait()
-                    print(f"Could not request results from Google Speech Recognition service; {e}")
+                    speak("Could not request results from Google Speech Recognition service; {0}".format(e))
 
                 # Check if user wants to exit
-                engine.say("If you want to continue please say True otherwise say False.")
-                engine.runAndWait()
+                speak("If you want to continue please say true otherwise say false.")
                 
                 try:
                     voice = recognizer.listen(source)  # Use the same source
                     final = recognizer.recognize_vosk(voice)
                     if final.lower() == 'no' or final.lower() == 'please exit':
-                        engine.say("Thank You. Shutting Down now.")
-                        engine.runAndWait()
+                        speak("Thank You. Shutting Down now.")
                         break  # Exit the loop
                 except sr.UnknownValueError:
-                    engine.say("Sorry, I did not understand that. Please try again.")
-                    engine.runAndWait()
+                    speak("Sorry, I did not understand that. Please try again.")
                 except sr.RequestError as e:
-                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
-                    engine.runAndWait()
-                    print(f"Could not request results from Google Speech Recognition service; {e}")
+                    speak("Could not request results from Google Speech Recognition service; {0}".format(e))
 
         except Exception as e:
             print(f"Error occurred: {e}")

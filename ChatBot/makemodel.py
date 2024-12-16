@@ -2,106 +2,184 @@ import random
 import json
 import pickle
 import nltk
-import numpy as np
 from nltk.stem import WordNetLemmatizer
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import load_model
+import numpy as np
+import speech_recognition as sr
+import pyttsx3
+import time
 
-# Download required NLTK resources
-# nltk.download('punkt')  # برای توکن‌سازی جملات
-nltk.download('punkt_tab')
-nltk.download('wordnet')  # برای لِمَت‌سازی کلمات
-nltk.download('omw-1.4')  # برای دسترسی به WordNet
-# Initialize lemmatizer
+# Initialize lemmatizer for word normalization
 lemmatizer = WordNetLemmatizer()
 
 # Load intents from JSON file
-with open("intents.json") as file:
-    intents = json.load(file)  # بارگذاری داده‌های intents از فایل JSON
-
-words = []  # لیستی برای ذخیره کلمات
-classes = []  # لیستی برای ذخیره کلاس‌ها (برچسب‌ها)
-documents = []  # لیستی برای ذخیره مستندات (جملات و برچسب‌ها)
-
-ignore_letters = ["?", "!", ".", ","]  # کاراکترهایی که باید نادیده گرفته شوند
-
-# Process intents to create training data
-for intent in intents["intents"]:
-    for pattern in intent["patterns"]:
-        word_list = nltk.word_tokenize(pattern)  # توکن‌سازی جملات
-        words.extend(word_list)  # اضافه کردن کلمات به لیست words
-        documents.append((word_list, intent["tag"]))  # ذخیره جملات و برچسب‌ها
-
-        if intent["tag"] not in classes:
-            classes.append(intent["tag"])  # اضافه کردن برچسب به کلاس‌ها
-
-# Save words and classes to pickle files
-pickle.dump(words, open('words.pkl', 'wb'))  # ذخیره کلمات در فایل
-pickle.dump(classes, open('classes.pkl', 'wb'))  # ذخیره کلاس‌ها در فایل
-
-# Prepare dataset for training
-dataset = []  # لیست برای ذخیره داده‌های آموزشی
-template = [0] * len(classes)  # الگوی خروجی برای هر کلاس
-
-# ایجاد داده‌های آموزشی
-for document in documents:
-    bag = []  # لیست برای ذخیره بردار ورودی
-    word_patterns = document[0]  # دریافت کلمات الگو
-    word_patterns = [lemmatizer.lemmatize(word.lower()) for word in word_patterns]  # لِمَت‌سازی کلمات
-
-    # ایجاد بردار ورودی (bag of words)
-    for word in words:
-        bag.append(1) if word in word_patterns else bag.append(0)
-
-    # ایجاد بردار خروجی
-    output_row = list(template)
-    output_row[classes.index(document[1])] = 1  # تنظیم مقدار 1 برای کلاس مربوطه
-    dataset.append([bag, output_row])  # اضافه کردن داده به dataset
-
-# Shuffle dataset to ensure randomness
-random.shuffle(dataset)  # مخلوط کردن داده‌ها
-
-# Check lengths before converting to numpy array
-for entry in dataset:
-    bag, output_row = entry
-    if len(bag) != len(words) or len(output_row) != len(classes):
-        print(f"Length mismatch: Bag length: {len(bag)}, Output row length: {len(output_row)}")
-
-# Convert dataset to numpy array
 try:
-    dataset = np.array(dataset, dtype=object)  # استفاده از dtype=object برای آرایه‌های با طول متغیر
-except ValueError as e:
-    print("Error converting dataset to numpy array:", e)
+    intents = json.loads(open("intents.json").read())
+except FileNotFoundError:
+    print("Error: intents.json file not found.")
+    exit(1)
 
-# Split dataset into training data
-train_x = np.array([item[0] for item in dataset])  # استخراج بردارهای ورودی
-train_y = np.array([item[1] for item in dataset])  # استخراج بردارهای خروجی
+# Load processed words and classes from pickle files
+try:
+    words = pickle.load(open('words.pkl', 'rb'))
+    classes = pickle.load(open('classes.pkl', 'rb'))
+except FileNotFoundError as e:
+    print(f"Error: {e}. Make sure 'words.pkl' and 'classes.pkl' exist.")
+    exit(1)
 
-# Build the neural network model
-model = Sequential()
-model.add(Dense(256, input_shape=(len(train_x[0]),), activation='relu'))  # لایه ورودی
-model.add(Dropout(0.5))  # لایه Dropout برای جلوگیری از Overfitting
-model.add(Dense(128, activation='relu'))  # لایه مخفی
-model.add(Dropout(0.5))  # لایه Dropout
-model.add(Dense(len(train_y[0]), activation='softmax'))  # لایه خروجی با تابع فعال‌سازی softmax
+# Load the trained model
+try:
+    model = load_model('chatbot_model.h5')
+except Exception as e:
+    print(f"Error loading model: {e}")
+    exit(1)
 
-# Compile the model
-sgd = SGD(learning_rate=0.01, momentum=0.9, nesterov=True)  # تنظیمات بهینه‌ساز
-model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])  # کامپایل مدل
+def clean_up_sentence(sentence):
+    """Tokenizes and lemmatizes the input sentence."""
+    sentence_words = nltk.word_tokenize(sentence)
+    sentence_words = [lemmatizer.lemmatize(word) for word in sentence_words]
+    return sentence_words
 
-# Train the model
-hist = model.fit(train_x, train_y, epochs=200, batch_size=5, verbose=1)  # آموزش مدل
+def bag_of_words(sentence):
+    """Creates a bag of words representation of the input sentence."""
+    sentence_words = clean_up_sentence(sentence)
+    bag = [0] * len(words)
 
-# Save the model
-model.save("chatbot_model.h5")  # ذخیره مدل آموزش‌دیده
-print("Done!")  # پایان کار
+    for w in sentence_words:
+        for i, word in enumerate(words):
+            if word == w:
+                bag[i] = 1
+    return np.array(bag)
 
+def predict_class(sentence):
+    """Predicts the class of the input sentence using the trained model."""
+    bow = bag_of_words(sentence)  # Convert sentence to bag of words
+    res = model.predict(np.array([bow]))[0]  # Get predictions from the model
 
-'''
-توضیحات کلی:
-این کد یک مدل یادگیری عمیق برای شناسایی گفتار و پاسخ به آن با استفاده از داده‌های ورودی از فایل JSON ایجاد می‌کند.
-ابتدا داده‌ها پردازش می‌شوند و سپس مدل آموزش داده می‌شود.
-در نهایت، مدل آموزش‌دیده در یک فایل H5 ذخیره می‌شود.
+    ERROR_THRESHOLD = 0.25  # Set a threshold for confidence
 
-'''
+    # Filter out predictions below the threshold
+    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]
+    results.sort(key=lambda x: x[1], reverse=True)  # Sort by probability
+
+    return_list = []
+    for r in results:
+        return_list.append({'intent': classes[r[0]], 'probability': str(r[1])})
+    return return_list
+
+def get_response(intents_list, intents_json):
+    """Fetches a random response for the predicted intent."""
+    if not intents_list:
+        return "I'm sorry, I didn't understand that."
+    
+    tag = intents_list[0]['intent']
+    list_of_intents = intents_json['intents']
+
+    result = ''
+    for i in list_of_intents:
+        if i['tag'] == tag:
+            result = random.choice(i['responses'])  # Get a random response
+            break
+    return result
+
+def calling_the_bot(txt):
+    """Processes the input text, predicts the intent, and responds via voice."""
+    global res
+    predict = predict_class(txt)  # Predict the class of the input
+    res = get_response(predict, intents)  # Get the corresponding response
+
+    # Speak the response using text-to-speech
+    engine.say("Found it. From our database we found that " + res)
+    engine.runAndWait()
+    print("Your Symptom was: ", txt)
+    print("Result found in our Database: ", res)
+
+if __name__ == '__main__':
+    print("Bot is Running")
+
+    recognizer = sr.Recognizer()  # Initialize speech recognizer
+    mic = sr.Microphone(device_index=4)  # Initialize microphone
+
+    engine = pyttsx3.init()  # Initialize text-to-speech engine
+    rate = engine.getProperty('rate')
+    engine.setProperty('rate', 120)  # تنظیم سرعت گفتار (مقدار پایین‌تر برای وضوح بیشتر)
+    engine.setProperty('volume', 1.0)  # تنظیم سطح صدا
+
+    voices = engine.getProperty('voices')
+
+    # Greet the user
+    engine.say("Hello user, I am Siyamak, your personal Talking Healthcare Chatbot.")
+    engine.runAndWait()
+
+    # Ask for voice preference
+    engine.say("IF YOU WANT TO CONTINUE WITH MALE VOICE PLEASE SAY MALE. OTHERWISE SAY FEMALE.")
+    engine.runAndWait()
+
+    # Capture voice input for gender preference
+    with mic as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        try:
+            audio = recognizer.listen(source)
+            audio = recognizer.recognize_vosk(audio)  # Use Vosk for recognition
+
+            # Set voice based on user preference
+            if audio.lower() == "female":
+                engine.setProperty('voice', voices[1].id)  # Set female voice
+                print("You have chosen to continue with Female Voice")
+            else:
+                engine.setProperty('voice', voices[0].id)  # Set male voice
+                print("You have chosen to continue with Male Voice")
+
+            # Main loop for symptom input
+            while True:
+                print("Say Your Symptoms. The Bot is Listening")
+                engine.say("You may tell me your symptoms now. I am listening")
+                engine.runAndWait()
+                
+                try:
+                    recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    symp = recognizer.listen(source)  # Use the same source
+                    text = recognizer.recognize_vosk(symp)  # Convert audio to text
+                    print(text, 11111111111111111111)
+                    engine.say("You said {}".format(text))
+                    engine.runAndWait()
+                    time.sleep(2)
+
+                    engine.say("Scanning our database for your symptom. Please wait.")
+                    engine.runAndWait()
+                    time.sleep(2)
+
+                    # Process the recognized symptoms
+                    calling_the_bot(text)
+                except sr.UnknownValueError:
+                    # Handle unrecognized speech
+                    engine.say("Sorry, I could not understand what you said. Please try again.")
+                    engine.runAndWait()
+                    print("Sorry, I could not understand what you said. Please try again.")
+                except sr.RequestError as e:
+                    # Handle request error
+                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
+                    engine.runAndWait()
+                    print(f"Could not request results from Google Speech Recognition service; {e}")
+
+                # Check if user wants to exit
+                engine.say("If you want to continue please say True otherwise say False.")
+                engine.runAndWait()
+                
+                try:
+                    voice = recognizer.listen(source)  # Use the same source
+                    final = recognizer.recognize_vosk(voice)
+                    if final.lower() == 'no' or final.lower() == 'please exit':
+                        engine.say("Thank You. Shutting Down now.")
+                        engine.runAndWait()
+                        break  # Exit the loop
+                except sr.UnknownValueError:
+                    engine.say("Sorry, I did not understand that. Please try again.")
+                    engine.runAndWait()
+                except sr.RequestError as e:
+                    engine.say("Could not request results from Google Speech Recognition service; {0}".format(e))
+                    engine.runAndWait()
+                    print(f"Could not request results from Google Speech Recognition service; {e}")
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
