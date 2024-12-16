@@ -2,6 +2,16 @@
 
 Welcome to the MLHub ChatBot repository! This project provides a modular framework for building AI-powered chatbots. It is designed to help developers create intelligent conversational agents using machine learning techniques.
 
+<<<<<<< HEAD
+=======
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Contributing](#contributing)
+- [License](#license)
+>>>>>>> f04d4f2ed28f2cc67928ac94403fb163349b08cd
 
 ## Features
 
