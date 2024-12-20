@@ -4,7 +4,7 @@ import pickle
 
 import nltk
 # Download all NLTK resources (this may take some time)
-nltk.download('all')
+# nltk.download('all')
 from nltk.stem import WordNetLemmatizer
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense,  Dropout
@@ -69,6 +69,7 @@ for document in documents:
     output_row = list(template)
     output_row[classes.index(document[1])] = 1
     dataset.append([bag, output_row])
+
 
 # Shuffle the dataset to ensure randomness during training
 random.shuffle(dataset)
