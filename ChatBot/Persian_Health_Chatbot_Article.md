@@ -94,6 +94,7 @@ pickle.dump(classes, open('classes.pkl', 'wb'))
 ### 3. **نمایش Bag of Words**
 - برای هر سند (الگو و برچسب) یک نمایش باینری Bag of Words ایجاد می‌شود.
 - به این معنی که برای هر الگو، وجود هر کلمه منحصر به فرد با ۱ (وجود دارد) یا ۰ (وجود ندارد) مشخص می‌شود.
+- تبدیل متون به نمایه‌های عددی است
 
 ### 4. **آماده‌سازی مجموعه داده**
 - مجموعه داده به منظور اطمینان از تصادفی بودن قبل از آموزش، شافل می‌شود.
@@ -110,116 +111,35 @@ pickle.dump(classes, open('classes.pkl', 'wb'))
 - مدل با استفاده از Stochastic Gradient Descent (SGD) به عنوان بهینه‌ساز و categorical crossentropy به عنوان تابع هزینه کمپایل می‌شود.
 - مدل بر روی ۲۰۰ اپوک با اندازه بچ ۵ آموزش داده می‌شود.
 
+
+- **learning_rate=0.01**: نرخ یادگیری را تعیین می‌کند، که سرعت به‌روزرسانی وزن‌ها در هر مرحله از آموزش را مشخص می‌کند.
+- **momentum=0.9**: مقدار مومنتوم را تعیین می‌کند که به تسریع همگرایی و کاهش نوسانات در مسیر بهینه‌سازی کمک می‌کند.
+- **nesterov=True**: فعال‌سازی نستروا (Nesterov) که یک تکنیک بهبود یافته برای مومنتوم است و پیش‌بینی بهتری از موقعیت آینده وزن‌ها ارائه می‌دهد.
+
 ### **template**
 - اگر یک ورودی به یک کلاس خاص تعلق داشته باشد، می‌توان عنصر مربوطه در تمپلت را به ۱ تغییر داد. به عنوان مثال، اگر کلاس اول (نیت “greeting”) باشد، لیست به صورت [1, 0, 0] خواهد بود.
 
 
-```python
-lemmatizer = WordNetLemmatizer()
-
-intents = json.loads(open("intents.json").read())
-words = []
-classes = []
-documents = []
-ignore_letters = ["?", "!", ".", ","]
-
-for intent in intents["intents"]:
-    for pattern in intent["patterns"]:
-        word_list = nltk.word_tokenize(pattern)
-        words.extend(word_list)
-        documents.append((word_list, intent["tag"]))
-
-        if intent["tag"] not in classes:
-            classes.append(intent["tag"])
-
-words = [lemmatizer.lemmatize(word) for word in words if word not in ignore_letters]
-words = sorted(set(words))
-classes = sorted(set(classes))
-```
-
-#### ۵. آماده‌سازی داده‌ها برای آموزش مدل
-
-برای ورودی‌های شبکه عصبی، داده‌ها را به مقادیر عددی تبدیل می‌کنیم. از روش **Bag of Words** برای نمایش داده‌ها استفاده می‌شود:
-
-```python
-dataset = []
-template = [0]*len(classes)
-
-for document in documents:
-    bag = []
-    word_patterns = document[0]
-    word_patterns = [lemmatizer.lemmatize(word.lower()) for word in word_patterns]
-
-    for word in words:
-        bag.append(1) if word in word_patterns else bag.append(0)
-
-    output_row = list(template)
-    output_row[classes.index(document[1])] = 1
-    dataset.append([bag, output_row])
-
-random.shuffle(dataset)
-dataset = np.array(dataset)
-
-train_x = list(dataset[:, 0])
-train_y = list(dataset[:, 1])
-```
-
 ---
 
-#### ۶. ساخت و آموزش مدل
-
-مدل با استفاده از کتابخانه Keras ساخته و آموزش داده می‌شود:
-
-```python
-model = Sequential()
-model.add(Dense(256, input_shape=(len(train_x[0]),), activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(len(train_y[0]), activation='softmax'))
-
-sgd = SGD(learning_rate=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
-
-model.fit(np.array(train_x), np.array(train_y), epochs=200, batch_size=5, verbose=1)
-model.save("chatbot_model.h5")
-```
-
----
-
-#### ۷. آزمایش چت‌بات
+#### . آزمایش چت‌بات
 
 کد زیر یک چت‌بات کامل است که با استفاده از ورودی صوتی، علائم کاربر را شناسایی کرده و پاسخ مناسب را ارائه می‌دهد:
+کد ارائه شده شامل دو تابع است که به پیش‌بینی کلاس (intent) یک جمله و دریافت پاسخ مناسب بر اساس آن کلاس کمک می‌کند. در زیر توضیح مختصری از هر تابع ارائه شده است:
 
-```python
-import speech_recognition as sr
-import pyttsx3
+### تابع `predict_class(sentence)`
 
-def calling_the_bot(txt):
-    predict = predict_class(txt)
-    res = get_response(predict, intents)
+1. **ورودی**: یک جمله (string) به عنوان ورودی دریافت می‌کند.
+2. **کیسه کلمات**: با استفاده از تابع `bag_of_words`، نمایه کیسه کلمات (bag of words) جمله را ایجاد می‌کند.
+3. **پیش‌بینی**: با استفاده از مدل یادگیری عمیق، احتمال هر کلاس (intent) را پیش‌بینی می‌کند.
+4. **فیلتر نتایج**: نتایج را بر اساس یک آستانه خطا (ERROR_THRESHOLD) فیلتر می‌کند تا فقط کلاس‌هایی که احتمال آن‌ها بالاتر از 0.25 است، در نظر گرفته شوند.
+5. **مرتب‌سازی**: نتایج را بر اساس احتمال به صورت نزولی مرتب می‌کند.
+6. **خروجی**: یک لیست از دیکشنری‌ها را برمی‌گرداند که شامل نام کلاس (intent) و احتمال مربوط به آن است.
 
-    engine.say(f"Based on the symptoms, the diagnosis is: {res}")
-    engine.runAndWait()
-    print(f"Symptoms: {txt}
-Diagnosis: {res}")
+### تابع `get_response(intents_list)`
 
-if __name__ == "__main__":
-    recognizer = sr.Recognizer()
-    mic = sr.Microphone()
-    engine = pyttsx3.init()
-
-    print("Bot is running...")
-    while True:
-        with mic as source:
-            print("Say your symptoms...")
-            recognizer.adjust_for_ambient_noise(source)
-            audio = recognizer.listen(source)
-            try:
-                text = recognizer.recognize_google(audio)
-                print(f"You said: {text}")
-                calling_the_bot(text)
-            except sr.UnknownValueError:
-                print("Could not understand. Please try again.")
-```
-
+1. **ورودی**: یک لیست از intents (کلاس‌های پیش‌بینی شده) به عنوان ورودی دریافت می‌کند.
+2. **بررسی خالی بودن لیست**: اگر لیست خالی باشد، پیامی مبنی بر عدم وجود اطلاعات مرتبط برمی‌گرداند.
+3. **انتخاب کلاس برتر**: کلاس (intent) با بالاترین احتمال را انتخاب می‌کند.
+4. **پیدا کردن پاسخ**: برای کلاس انتخاب شده، از لیست پاسخ‌ها (responses) تصادفی یک پاسخ را انتخاب کرده و برمی‌گرداند.
+5. **خروجی**: پاسخ انتخاب شده را برمی‌گرداند.

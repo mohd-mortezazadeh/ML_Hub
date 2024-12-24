@@ -37,8 +37,8 @@ def bag_of_words(sentence):
 def predict_class(sentence):
     bow = bag_of_words(sentence)  # Get bag of words
     res = model.predict(np.array([bow]))[0]  # Predict using the model
-    ERROR_THRESHOLD = 0.25
-    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]  # Filter results
+    ERROR_THRESHOLD = 0.25 
+    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]  # Filter results base on the class is heigher than 0.25
     results.sort(key=lambda x: x[1], reverse=True)  # Sort by probability
     return [{'intent': classes[r[0]], 'probability': str(r[1])} for r in results]  # Return intents
 

@@ -30,7 +30,7 @@ ignore_letters = ["?", "!", ".", ","]
 for intent in intents["intents"]:
     for pattern in intent["patterns"]:
         # Tokenize each pattern and add to the word list and documents
-        word_list = nltk.word_tokenize(pattern)
+        word_list = nltk.word_tokenize(pattern) # تقسیم متن به کلمات 
         words.extend(word_list)
         documents.append((word_list, intent["tag"]))
 
