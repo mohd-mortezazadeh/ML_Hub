@@ -57,7 +57,7 @@ template = [0] * len(classes)  # Initialize output template
 # Create the bag of words and output rows for each document
 for document in documents:
     bag = []
-    word_patterns = document[0]
+    word_patterns = document[0] #feature
     word_patterns = [lemmatizer.lemmatize(word.lower())
                      for word in word_patterns]
 
@@ -67,7 +67,7 @@ for document in documents:
 
     # Create the output row for the corresponding class
     output_row = list(template)
-    output_row[classes.index(document[1])] = 1
+    output_row[classes.index(document[1])] = 1 #document[1] ==>label
     dataset.append([bag, output_row])
 
 
